@@ -22,35 +22,35 @@ Architecture visualization:
 ![Architecture](images/readme/architecture.png?raw=true "Architecture")
 
 There are five components:
-* Embedder 1: A CNN that is pretrained in semi-supervised fashion. The two gradient inputs (see image) are just gradients from `1` to `0` which are supposed to give positional information. (E.g. the mirrors are always at roughly the same positions, so it is logical to detect them partially by their position.) Instance Normalization was used, because Batch Normalization regularly broke, resulting in zero-only vectors during test (seemed like a bug in the framework, would usually go away when using batch sizes >= 2 or staying in training mode).
-* Embedder 2: Takes the results of Embedder 1 and converts them into a vector. Additional inputs are added here. (These are: (1) Previous actions, (2) whether the gear is in reverse mode, (3) steering wheel position. The current gear state is read out from the route advisor. The steering wheel position is approximated using a separate CNN.) Not merging this component with Embedder 1 allows to theoretically keep the weights from pretraining fixed.
+* Embedder 1: A CNN that is pretrained in semi-supervised fashion. The two gradient inputs (see image) are just gradients from `1` to `0` which are supposed to give positional information. (E.g. the mirrors are always at roughly the same positions, so it is logical to detect them partially by their position.) Instance Normalization was used, because Batch Normalization regularly broke, resulting in zero-only vectors during test/eval (seemed like a bug in the framework, would usually go away when using batch sizes >= 2 or staying in training mode).
+* Embedder 2: Takes the results of Embedder 1 and converts them into a vector. Additional inputs are added here. (These are: (1) Previous actions, (2) whether the gear is in reverse mode, (3) steering wheel position, (4) previous and current speeds. The current gear state and the speed is read out from the route advisor. The steering wheel position is approximated using a separate CNN.) Not merging this component with Embedder 1 allows to theoretically keep the weights from pretraining fixed.
 * Direct Reward: A model that predicts the direct reward, i.e. for `(s, a, r), (s', a', r')` it predicts `r` when being in `s'`. The reward is bound to the range -100 to +100. It predicts the reward value using a softmax over 100 bins.
 * Indirect Reward: A model that predicts future rewards, i.e. for `(s, a, r), (s', a', r'), ...` it predicts `r + gamma*r' + gamma^2*r''` when being in state `s`. Gamma is set to `0.95`. This model uses standard regression. It predicts one value per action, i.e. `Q(s, a)`.
 * Successors: An RNN model that predicts future embeddings (when specific actions are chosen). These future embeddings can then be used to predict future direct and indirect rewards (using the two previous models). This module uses an addition to the previously generated embedding (i.e. residual architecture). That way the LSTMs only have to predict the changes (of the embeddings) that were caused by the actions.
+
 Aside from these, there is also an autoencoder component applied to the embeddings of Embedder 2.
 However, that component is only trained for some batches, so it is skipped here.
 
 During application, each game state (i.e. frame/screenshot at 10fps) is embedded via convolutions and fully connected layers to a vector.
 From that vector, future embeddings (the successors) are predicted.
 Each such prediction (for each timestep) is dependent on a chosen action (e.g. pressing W+A followed by two times W converts game state vector X into Y).
-For 9 possible actions (W, W+A, W+D, S, S+A, S+D, A, D, none) and 5 timesteps (i.e. looking 0.5 seconds into the future),
-this leads to 59k possible chains of actions.
-This number is decreased to roughly 400 sensible plans (e.g. 5x W, 5x W+A, 2x W+A followed by 3x W, ...).
+For 9 possible actions (W, W+A, W+D, S, S+A, S+D, A, D, none) and 10 timesteps (i.e. looking 1 second into the future), this leads to roughly 3.5 billion possible chains of actions.
+This number is decreased to roughly 400 sensible plans (e.g. 10x W, 10x W+A, 3x W+A followed by 7x W, ...).
 For each such plan, the successors are generated and rewards are predicted (which can be done reasonably fast as the embedding's vector size is only 512).
 The plans are ordered/ranked by the V-values of their last timesteps and the plan with the highest V-value is chosen.
 (The predicted direct rewards of successors are currently ignored in the ranking, which seemed to improve the driving a bit.)
 
-# Reward function
+# Reward Function
 
 For a chain `(s, a, r, s')`, the reward `r` is mainly dependent on the measured speed at `s'`.
-The formula is `r = sp*(0.25*rev) + o + d`, where
+The formula is `r = sp*rev + o + d`, where
 * `sp` is the current speed (clipped to 0 to 100),
-* `rev` is `1` if the truck is in reverse gear ("drive backwards mode") and otherwise `0`
+* `rev` is `0.25` if the truck is in reverse gear ("drive backwards mode") and otherwise `1`
 * `o` is `-10` if an offence is shown (e.g. "ran over a red light", "crashed into a vehicle")
 * `d` is `-50` if the truck has taken damage (shown by a message similar to offences, which stays for around 2 seconds)
 
 The speed is read out from the game screen (it is shown in the route advisor).
-Similarly, offences and damages can be recognized using simple pixels comparisons or instance matching in the area of the route advisor (both events lead to shown messages).
+Similarly, offences and damages can be recognized using simple pixel comparisons or instance matching in the area of the route advisor (both events lead to shown messages).
 
 # Difficulties
 
@@ -61,7 +61,7 @@ ETS2 is a harder game to play (for an AI) than it may seem at first glance. Some
 * The truck needs a very large area to turn around.
 * When driving backwards, the front of the truck can collide with the container at the back. Then it can't drive further backwards, limiting the maximum length that you can drive that way before having to switch again to forward+left/right (depending on the situation).
 * When pressing left or right, the truck does not immediately drive towards the left or right. Instead, these keys merely change the position of the steering wheel. It is common to steer (via left/right button) into a direction for several timesteps (e.g. one second), while the truck keeps driving into the opposite direction the whole time.
-* The steering wheel can turn by more than 360 degrees, so when it looks like you are steering towards the right you might be steering towards the left. (Here, the steering wheel is tracked at all times via a CNN that runs separately from the AI's CNN - though that model sometimes produces errors.)
+* The steering wheel can turn by more than 360 degrees, so when it looks like you are steering towards the right you might actually be steering towards the left. (Here, the steering wheel is tracked at all times via a CNN that runs separately from the AI's CNN - though that model sometimes produces errors.)
 * The truck can get randomly stuck on objects that aren't even visible from the driver's seat. This may include objects blocking some wheel at the far back of the container. Even as a human driver, that can be annoying and hard to fix.
 * Driving into the green can get you stuck at invisible walls (or tiny hills, see above point), which is hard to understand for the AI. (Especially as it has almost no memory - so it might not even recognize in any way that it is stuck.)
 * Sidenote: Most of the game is spent pressing only W (forward) on the highway, which makes it hard to train a model in supervised fashion from recorded gameplay (`W+no steering` has basically always maximum probability).
@@ -77,7 +77,7 @@ As a consequence, the AI is best at driving on highways, which usually have such
 However, it will not care about lanes and not that much about other cars (but it seems to recognize them).
 In general, the AI's driving capabilities are still far away from the ones of humans.
 
-Typical problem of the AI are:
+Typical problems of the AI are:
 * Steering towards a wall: Sometimes it will hit a wall at a diagonal angle and continue to steer into it. E.g. the wall is on the right side and the AI choses to steer right instead of left. The truck will then come to a standstill and not move any more. The reason for why the AI does that is unclear -- might be connected to the steering wheel being able to turn by more than 360 degrees, creating confusion during the training. Or maybe it correlates some random pattern on the screen with driving towards the right, instead of just looking at the street and walls. Another possible cause is that driving towards the center of the street in these situations has a high likelihood of causing crashes with other cars, as these approach from behind with high speed. These crashes induce significant negative reward, which might lead the AI to prefer the permanent zero-reward from the wall.
 * Driving frontally into a wall: It can happen that the truck drives frontally into a wall, though not so often (more common with lanterns or railings in cities). Sometimes it will switch into reverse mode to get out of the situation.
 * Small objects: It easily gets stuck on these and then can't see them from the driver's seat. As its memory is only 200ms, it will usually not switch into reverse gear. This also happens on highways at the start of railings.
