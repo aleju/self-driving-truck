@@ -1,3 +1,37 @@
+*.lprof
+
+train_reinforced/bak*
+train_reinforced/train_reinforced_debug_img_train.png
+train_reinforced/train_reinforced_debug_img_val.png
+train_reinforced/train_reinforced_plot.jpg
+train_reinforced/train_reinforced_model.tar
+train_reinforced/train_reinforced_model.tar.gz
+train_reinforced/video_command.txt
+train_reinforced/transfer_old_model.py
+
+train_semisupervised/bak*
+train_semisupervised/train_semisupervised_debug_img.jpg
+train_semisupervised/train_semisupervised_debug_img_val.jpg
+train_semisupervised/train_semisupervised_debug_img_withshortcuts.jpg
+train_semisupervised/train_semisupervised_debug_img_val_withshortcuts.jpg
+train_semisupervised/train_semisupervised_plot.jpg
+train_semisupervised/train_semisupervised_plot_withshortcuts.jpg
+train_semisupervised/train_semisupervised_model.tar
+train_semisupervised/train_semisupervised_model.tar.gz
+train_semisupervised/train_semisupervised_model_withshortcuts.tar
+train_semisupervised/train_semisupervised_model_withshortcuts.tar.gz
+
+train_steering_wheel/debug_img_train.jpg
+train_steering_wheel/debug_img_val.jpg
+train_steering_wheel/train_plot.jpg
+# .tar file is intentionally part of the repository
+
+lib/getactivewindow.c
+
+images/steering_wheel/*
+images/ingame_*
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -15,7 +49,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+#lib/
 lib64/
 parts/
 sdist/
