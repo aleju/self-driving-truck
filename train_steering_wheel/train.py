@@ -25,15 +25,15 @@ import torch.optim as optim
 import torch.nn.functional as F
 import multiprocessing
 import threading
-import cPickle as pickle
 import argparse
 np.random.seed(42)
 random.seed(42)
 torch.manual_seed(42)
 
-try:
-    xrange
-except NameError:
+if sys.version_info[0] == 2:
+    import cPickle as pickle
+elif sys.version_info[0] == 3:
+    import pickle
     xrange = range
 
 # train for N batches

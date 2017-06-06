@@ -16,9 +16,10 @@ import cPickle as pickle
 import random
 from skimage import feature
 
-try:
-    xrange
-except NameError:
+if sys.version_info[0] == 2:
+    import cPickle as pickle
+elif sys.version_info[0] == 3:
+    import pickle
     xrange = range
 
 def create_batch(examples, examples_autogen, augseq):

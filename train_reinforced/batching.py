@@ -19,15 +19,16 @@ from lib import replay_memory
 import numpy as np
 from scipy import misc
 import multiprocessing
-import Queue
 import threading
 import random
-import cPickle as pickle
 import time
 
-try:
-    xrange
-except NameError:
+if sys.version_info[0] == 2:
+    import cPickle as pickle
+    from Queue import Full as QueueFull
+elif sys.version_info[0] == 3:
+    import pickle
+    from queue import Full as QueueFull
     xrange = range
 
 GPU = Config.GPU
@@ -432,7 +433,7 @@ class BackgroundBatchLoader(object):
                 try:
                     queue.put(batch_str, timeout=1)
                     added_to_queue = True
-                except Queue.Full as e:
+                except QueueFull as e:
                     pass
             end_time = time.time()
         batch_loader._memory.close()

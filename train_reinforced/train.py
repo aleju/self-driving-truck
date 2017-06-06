@@ -43,7 +43,6 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 from torch.autograd import Variable
-import cPickle as pickle
 import argparse
 import collections
 from datetime import datetime
@@ -55,9 +54,9 @@ random.seed(42)
 torch.manual_seed(42)
 torch.backends.cudnn.benchmark = True
 
-try:
-    xrange
-except NameError:
+if sys.version_info[0] == 2:
+    pass
+elif sys.version_info[0] == 3:
     xrange = range
 
 # number of batches per training sessions and batch size
