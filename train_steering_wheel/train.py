@@ -1,3 +1,4 @@
+"""Trains a CNN to detect the current steering wheel angle from images."""
 from __future__ import print_function, division
 
 import sys
@@ -6,8 +7,6 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 import models
 from lib import replay_memory
-from lib import states
-from lib import actions
 from lib import util
 from lib.util import to_variable, to_cuda, to_numpy
 from lib import plotting
@@ -18,19 +17,16 @@ import imgaug as ia
 from imgaug import augmenters as iaa
 from imgaug import parameters as iap
 import time
-import cv2
 import numpy as np
 import random
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-from torch.autograd import Variable
 import multiprocessing
 import threading
 import cPickle as pickle
 import argparse
-import os
 np.random.seed(42)
 random.seed(42)
 torch.manual_seed(42)
@@ -40,18 +36,31 @@ try:
 except NameError:
     xrange = range
 
+# train for N batches
 NB_BATCHES = 50000
+
+# size of each batch
 BATCH_SIZE = 128
+
+# save/val/plot every N batches
 SAVE_EVERY = 500
 VAL_EVERY = 500
-NB_VAL_BATCHES = 128
 PLOT_EVERY = 500
 
+# use N batches for validation (loss will be averaged)
+NB_VAL_BATCHES = 128
+
+# input image height/width
 MODEL_HEIGHT = 32
 MODEL_WIDTH = 64
+
+# size of each bin in degrees
 ANGLE_BIN_SIZE = 5
 
 def main():
+    """Function that initializes the training (e.g. models)
+    and runs the batches."""
+
     parser = argparse.ArgumentParser(description="Train steering wheel tracker")
     parser.add_argument('--nocontinue', default=False, action="store_true", help="Whether to NOT continue the previous experiment", required=False)
     args = parser.parse_args()
@@ -130,7 +139,7 @@ def main():
 
         if (batch_idx+1) % VAL_EVERY == 0:
             for i in xrange(NB_VAL_BATCHES):
-                run_batch(batch_idx, True, batch_loader_val, tracker_cnn, criterion, optimizer, history, i==0)
+                run_batch(batch_idx, True, batch_loader_val, tracker_cnn, criterion, optimizer, history, i == 0)
 
         if (batch_idx+1) % PLOT_EVERY == 0:
             loss_plotter.plot(history)
@@ -144,9 +153,10 @@ def main():
             }, "steering_wheel.tar")
 
 def run_batch(batch_idx, val, batch_loader, tracker_cnn, criterion, optimizer, history, save_debug_image):
+    """Train or validate on a single batch.""""
     train = not val
     time_cbatch_start = time.time()
-    inputs, outputs_gt = batch_loader.get_batch(volatile=val)
+    inputs, outputs_gt = batch_loader.get_batch()
     if Config.GPU >= 0:
         inputs = to_cuda(to_variable(inputs, volatile=val), Config.GPU)
         outputs_gt_bins = to_cuda(to_variable(np.argmax(outputs_gt, axis=1), volatile=val, requires_grad=False), Config.GPU)
@@ -177,6 +187,7 @@ def run_batch(batch_idx, val, batch_loader, tracker_cnn, criterion, optimizer, h
         misc.imsave("debug_img_%s.jpg" % ("train" if train else "val"), debug_img)
 
 def generate_debug_image(inputs, outputs_gt, outputs_pred):
+    """Draw an image with current ground truth and predictions for debug purposes."""
     current_image = inputs.data[0].cpu().numpy()
     current_image = np.clip(current_image * 255, 0, 255).astype(np.uint8).transpose((1, 2, 0))
     current_image = ia.imresize_single_image(current_image, (32*4, 64*4))
@@ -216,6 +227,8 @@ def generate_debug_image(inputs, outputs_gt, outputs_pred):
     return current_image
 
 def extract_steering_wheel_image(screenshot_rs):
+    """Extract the part of a screenshot (resized to 180x320 HxW) that usually
+    contains the steering wheel."""
     h, w = screenshot_rs.shape[0:2]
     x1 = int(w * (470/1280))
     x2 = int(w * (840/1280))
@@ -224,9 +237,16 @@ def extract_steering_wheel_image(screenshot_rs):
     return screenshot_rs[y1:y2+1, x1:x2+1, :]
 
 def downscale_image(steering_wheel_image):
-    return ia.imresize_single_image(steering_wheel_image, (MODEL_HEIGHT, MODEL_WIDTH), interpolation="linear")
+    """Downscale an image to the model's input sizes (height, width)."""
+    return ia.imresize_single_image(
+        steering_wheel_image,
+        (MODEL_HEIGHT, MODEL_WIDTH),
+        interpolation="linear"
+    )
 
 def load_random_state(memory, depth=0):
+    """Load a single random state from the replay memory which has a steering
+    wheel position attached (estimated via classical means)."""
     rndidx = random.randint(memory.id_min, memory.id_max)
     state = memory.get_state_by_id(rndidx)
     if state.steering_wheel_classical is None:
@@ -239,6 +259,8 @@ def load_random_state(memory, depth=0):
         return state
 
 def load_random_batch(memory, augseq, batch_size):
+    """Load a random batch from the replay memory for training.
+    augseq contains the image augmentation sequence to use."""
     inputs = np.zeros((batch_size, MODEL_HEIGHT, MODEL_WIDTH, 3), dtype=np.uint8)
     outputs = np.zeros((batch_size, 360//ANGLE_BIN_SIZE), dtype=np.float32)
 
@@ -266,6 +288,7 @@ def load_random_batch(memory, augseq, batch_size):
     return inputs, outputs
 
 class BatchLoader(object):
+    """Class to load batches in multiple background processes."""
     def __init__(self, val, queue_size, augseq, nb_workers, threaded=False):
         self.queue = multiprocessing.Queue(queue_size)
         self.workers = []
@@ -280,7 +303,7 @@ class BatchLoader(object):
             worker.start()
             self.workers.append(worker)
 
-    def get_batch(self, volatile):
+    def get_batch(self):
         return pickle.loads(self.queue.get())
 
     def _load_batches(self, val, queue, augseq_worker):
