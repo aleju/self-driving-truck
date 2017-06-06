@@ -258,9 +258,8 @@ class BatchLoader(object):
         for i in range(nb_workers):
             seed = random.randint(0, 10**6)
             augseq_worker = augseq.deepcopy()
-            augseq_worker.reseed()
             if threaded:
-                worker = threading.Thread(target=self._load_batches, args=(dataset, dataset_autogen, self.queue, augseq_worker, seed))
+                worker = threading.Thread(target=self._load_batches, args=(dataset, dataset_autogen, self.queue, augseq_worker, None))
             else:
                 worker = multiprocessing.Process(target=self._load_batches, args=(dataset, dataset_autogen, self.queue, augseq_worker, seed))
             worker.daemon = True
@@ -271,8 +270,12 @@ class BatchLoader(object):
         return pickle.loads(self.queue.get())
 
     def _load_batches(self, dataset, dataset_autogen, queue, augseq_worker, seed):
-        random.seed(seed)
-        np.random.seed(seed)
+        if seed is not None:
+            random.seed(seed)
+            np.random.seed(seed)
+            augseq_worker.reseed(seed)
+            ia.seed(seed)
+
         while True:
             batch = create_batch(dataset, dataset_autogen, augseq_worker)
             queue.put(pickle.dumps(batch, protocol=-1))

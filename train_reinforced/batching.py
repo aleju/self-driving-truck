@@ -422,6 +422,8 @@ class BackgroundBatchLoader(object):
         if seed is not None:
             random.seed(seed)
             np.random.seed(seed)
+            batch_loader.augseq.reseed(seed)
+            ia.seed(seed)
 
         while not exit_signal.is_set():
             batch = batch_loader.load_random_batch()
