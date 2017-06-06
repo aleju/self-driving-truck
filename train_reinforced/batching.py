@@ -1,10 +1,15 @@
+"""Functions to generate batches for the reinforcement learning part.
+Mainly intended for training, though during the playing phase, the same
+functions are used."""
 from __future__ import print_function, division
 
 import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
+import train
 import models as models_reinforced
+
 import cv2
 from config import Config
 import imgaug as ia
@@ -26,11 +31,15 @@ try:
 except NameError:
     xrange = range
 
-GPU = 0
-NB_REWARD_BINS = 101
-NB_FUTURE_STATES = 10
+GPU = Config.GPU
+NB_REWARD_BINS = train.NB_REWARD_BINS
 
 class BatchData(object):
+    """Method encapsulating the data of a single batch.
+
+    TODO some of the functions are named like properties, rename
+    """
+
     def __init__(self, curr_idx, images_by_timestep, images_prev_by_timestep, multiactions, rewards, speeds, is_reverse, steering_wheel, steering_wheel_raw, previous_states_distances):
         self.curr_idx = curr_idx
         self.images_by_timestep = images_by_timestep
@@ -45,27 +54,22 @@ class BatchData(object):
 
     @property
     def batch_size(self):
-        #return self.images.shape[1]
         return self.images_by_timestep.shape[1]
 
     @property
     def nb_future(self):
-        #return self.images.shape[0] - self.curr_idx - 1
         return self.images_prev_by_timestep.shape[0] - 1
 
     @property
     def nb_prev_per_image(self):
-        #return self.speeds.shape[0] - self.nb_future - 1
         return self.images_prev_by_timestep.shape[2]
 
     def reward_bin_idx(self, timestep, inbatch_idx):
-        #print("reward_bin_idx", timestep, inbatch_idx, self.rewards.shape)
         timestep = self.curr_idx + timestep
         reward = self.rewards[timestep, inbatch_idx]
         reward_norm = (reward - Config.MIN_REWARD) / (Config.MAX_REWARD - Config.MIN_REWARD)
         reward_norm = 1 - reward_norm # top to bottom
         rewbin = np.clip(int(reward_norm * NB_REWARD_BINS), 0, NB_REWARD_BINS-1) # clip here, because MAX_REWARD ends up giving bin NB_REWARD_BINS, which is 1 too high
-        #print("reward", reward, "norm", reward_norm, "bin", rewbin, "speed", self.speeds[timestep, inbatch_idx])
         return rewbin
 
     def rewards_bins(self, timestep):
@@ -163,20 +167,13 @@ class BatchData(object):
 
         return to_cuda(to_variable(vals_flat, volatile=volatile, requires_grad=requires_grad), gpu)
 
-    #def future_multiactions(self):
-    #    return self.multiactions[self.curr_idx+1:]
-
-    #def future_multiactions_vecs(self, volatile, gpu=GPU):
-    #    arr = models_reinforced.SuccessorPredictor.multiactions_to_vecs(self.multiactions[self.curr_idx+1:])
-    #    assert arr.shape == (NB_FUTURE_STATES, self.batch_size, 9)
-    #    return to_cuda(to_variable(arr, volatile=volatile), gpu)
     def inputs_successor_multiactions_vecs(self, volatile=False, requires_grad=True, gpu=GPU):
         # the successor gets in actions a and has to predict the next
         # state, i.e. for tuples (s, a, r, s') it gets a and predicts s',
         # hence the future actions here start at curr_idx (current state index)
         # and end at -1
         arr = models_reinforced.SuccessorPredictor.multiactions_to_vecs(self.multiactions[self.curr_idx:-1])
-        assert arr.shape == (NB_FUTURE_STATES, self.batch_size, 9)
+        assert arr.shape == (self.nb_future, self.batch_size, 9)
         return to_cuda(to_variable(arr, volatile=volatile, requires_grad=requires_grad), gpu)
 
     def direct_rewards_values(self, volatile=False, requires_grad=True, gpu=GPU):
@@ -185,16 +182,9 @@ class BatchData(object):
         return to_cuda(to_variable(rews, volatile=volatile, requires_grad=requires_grad), gpu)
 
     def future_direct_rewards_values(self, volatile=False, requires_grad=True, gpu=GPU):
-        rews = self.rewards[self.curr_idx+1:, :][:,:,np.newaxis]
+        rews = self.rewards[self.curr_idx+1:, :][:, :, np.newaxis]
         rews = np.tile(rews, (1, 1, 9))
         return to_cuda(to_variable(rews, volatile=volatile, requires_grad=requires_grad), gpu)
-
-    #def next_direct_rewards_values(self, volatile, gpu=GPU):
-    #    # curr_idx instead of curr_idx+1 for the same reasons as above
-    #    return to_cuda(to_variable(self.rewards[self.curr_idx, :, :], volatile=volatile), gpu)
-    #def direct_rewards_over_time(self, volatile, gpu=GPU):
-    #    bins = self.rewards_bins_all()
-    #    return to_cuda(to_variable(bins[self.curr_idx:-1], volatile=volatile), gpu)
 
     def outputs_dr_gt(self, volatile=False, requires_grad=True, gpu=GPU):
         # for a tuple (s, a, r, s'), the reward r is ought to be predicted
@@ -203,8 +193,6 @@ class BatchData(object):
         # it is saved at the previous timestep, i.e. at state s, hence
         # here -1
         bins = self.rewards_bins(-1)
-        #bins_labels = np.argmax(bins, axis=1)
-        #return to_cuda(to_variable(bins_labels, volatile=volatile, requires_grad=requires_grad), gpu)
         return to_cuda(to_variable(bins, volatile=volatile, requires_grad=requires_grad), gpu)
 
     def outputs_dr_future_gt(self, volatile=False, requires_grad=True, gpu=GPU):
@@ -212,8 +200,6 @@ class BatchData(object):
         # as above
         bins = self.rewards_bins_all()
         bins = bins[self.curr_idx:-1]
-        #bins_labels = np.argmax(bins.reshape(bins.shape[0]*bins.shape[1], -1), axis=1)
-        #return to_cuda(to_variable(bins_labels, volatile=volatile, requires_grad=requires_grad), gpu)
         return to_cuda(to_variable(bins, volatile=volatile, requires_grad=requires_grad), gpu)
 
     def outputs_ae_gt(self, volatile=False, requires_grad=True, gpu=GPU):
@@ -242,16 +228,14 @@ class BatchData(object):
         img = (img.transpose((1, 2, 0))*255).astype(np.uint8)
         imgs_prev = self.images_prev_by_timestep[timestep-self.curr_idx, inbatch_idx, :, :, :]
         imgs_prev = (imgs_prev.transpose((1, 2, 0))*255).astype(np.uint8)
-        #img_rs = ia.imresize_single_image(img, (imgs_prev.shape[0], imgs_prev.shape[1]))
 
         h, w = img.shape[0:2]
-        imgs_viz = [img] + [np.tile(imgs_prev[..., i][:,:,np.newaxis], (1, 1, 3)) for i in xrange(imgs_prev.shape[2])]
+        imgs_viz = [img] + [np.tile(imgs_prev[..., i][:, :, np.newaxis], (1, 1, 3)) for i in xrange(imgs_prev.shape[2])]
         imgs_viz = [ia.imresize_single_image(im, (h, w), interpolation="cubic") for im in imgs_viz]
         imgs_viz = np.hstack(imgs_viz)
 
         rewards_bins = self.rewards_bins_all()
         mas = [self.multiactions[i][inbatch_idx] for i in xrange(timestep-self.nb_prev_per_image, timestep)]
-        #pos = list(reversed(range(timestep-self.nb_prev_per_image, timestep)))
         pos = [timestep] + [timestep-d for d in self.previous_states_distances]
         reinforced_add = self.inputs_reinforced_add_numpy(timestep=timestep-self.curr_idx)
         outputs_dr_gt = self.outputs_dr_gt()[inbatch_idx]
@@ -272,6 +256,38 @@ class BatchData(object):
         return result
 
 def states_to_batch(previous_states_list, states_list, augseq, previous_states_distances, model_height, model_width, model_prev_height, model_prev_width):
+    """Convert multiple chains of states into a batch.
+
+    Parameters
+    ----------
+    previous_states_list : list of list of State
+        Per chain of states a list of the previous states.
+        First index of the list is the batch index,
+        second index is the timestep. The oldest states come first.
+    states_list : list of list of State
+        Per chain of states a list of states that contain the "current"
+        state at the start, followed by future states.
+        First index is batch index, second timestep.
+    augseq : Augmenter
+        Sequence of augmenters to apply to each image. Use Noop() to make
+        no changes.
+    previous_states_distances : list of int
+        List of distances relative to the current state. Each distance
+        refers to one previous state to add to the model input.
+        E.g. [2, 1] adds the state 200ms and 100ms before the current "state".
+    model_height : int
+        Height of the model input images (current state).
+    model_width : int
+        Width of the model input images (current state).
+    model_prev_height : int
+        Height of the model input images (previous states).
+    model_prev_width : int
+        Width of the model input images (previous states).
+
+    Returns
+    ----------
+    List of BatchData
+    """
     assert isinstance(previous_states_list, list)
     assert isinstance(states_list, list)
     assert isinstance(previous_states_list[0], list)
@@ -341,12 +357,14 @@ def states_to_batch(previous_states_list, states_list, augseq, previous_states_d
 
 def downscale(im, h, w):
     if im.ndim == 2:
-        im = im[:,:,np.newaxis]
+        im = im[:, :, np.newaxis]
         return np.squeeze(ia.imresize_single_image(im, (h, w), interpolation="cubic"))
     else:
         return ia.imresize_single_image(im, (h, w), interpolation="cubic")
 
 class BatchLoader(object):
+    """Class to load batches from the replay memory."""
+
     def __init__(self, val, batch_size, augseq, previous_states_distances, nb_future_states, model_height, model_width, model_prev_height, model_prev_width):
         self.val = val
         self.batch_size = batch_size
@@ -380,6 +398,9 @@ class BatchLoader(object):
         return states_to_batch(previous_states_list, states_list, self.augseq, self.previous_states_distances, self.model_height, self.model_width, self.model_prev_height, self.model_prev_width)
 
 class BackgroundBatchLoader(object):
+    """Class that takes a BatchLoader and executes it many times in background
+    processes."""
+
     def __init__(self, batch_loader, queue_size, nb_workers, threaded=False):
         self.queue = multiprocessing.Queue(queue_size)
         self.workers = []
