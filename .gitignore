@@ -1,4 +1,5 @@
 *.lprof
+*.sqlite
 
 train_reinforced/bak*
 train_reinforced/train_reinforced_debug_img_train.png
