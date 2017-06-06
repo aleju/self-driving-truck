@@ -1,3 +1,4 @@
+"""Functions/classes related to loading batches for training."""
 from __future__ import print_function, division
 
 import sys
@@ -21,6 +22,37 @@ except NameError:
     xrange = range
 
 def create_batch(examples, examples_autogen, augseq):
+    """Convert datasets of examples to batches.
+
+    This method will pick random examples from the datasets "examples"
+    (25 percent per batch) and "examples_autogen" (75 percent per batch).
+
+    Parameters
+    ----------
+    examples : list of Example
+        One or more hand-annotated examples to use. The Example class
+        is defined in dataset.py.
+    examples_autogen : list of Example
+        One or more automatically annoated examples to use.
+    augseq : Augmenter
+        Augmentation sequence to use.
+
+    Returns
+    ----------
+    (images, images_prev), (outputs_ae, outputs_grids, outputs_atts, outputs_multiactions, outputs_flow, outputs_canny, outputs_flips), (grids_annotated, atts_annotated)
+    where
+        images are the current timestep input images
+        images_prev are for each batch element the previous timestep input images
+        outputs_ae are the ground truth outputs for the autoencoder (decoder)
+        outputs_grids are the ground truth hand-annotated grids (e.g. car positions in images)
+        outputs_atts are the ground truth hand-annotated attributes (e.g. number of lanes)
+        outputs_multiactions are the ground truth action outputs (e.g. next action one-hot-vector)
+        outputs_flow are the ground truth optical flow outputs
+        outputs_canny are the ground truth canny edge outputs
+        outputs_flips are the ground truth of flipped input images (temporal flips)
+        grids_annotated is a (B, G) array that contains a 1 if for batch element b grid g was annotated
+        atts_annotated is a (B, 1) array that contains a 1 if for batch element b attributes were annotated
+    """
     B = train.BATCH_SIZE
 
     img_h, img_w = train.MODEL_HEIGHT, train.MODEL_WIDTH
@@ -54,7 +86,6 @@ def create_batch(examples, examples_autogen, augseq):
         imgs_prev = downscale(example.previous_screenshots_rs, img_prev_h, img_prev_w)
         imgs_prev_y = gray(imgs_prev)
 
-        #imgs_prev_orig = np.copy(imgs_prev)
         if random.random() < train.P_FLIP:
             flip_ids = random.sample(range(len(imgs_prev)), 2)
             imgs_prev[flip_ids[1]], imgs_prev[flip_ids[0]] = imgs_prev[flip_ids[0]], imgs_prev[flip_ids[1]]
@@ -72,7 +103,6 @@ def create_batch(examples, examples_autogen, augseq):
         atts, has_attributes = example.get_attributes_array()
 
         flow_settings = [
-            #{"pyr_scale": 0.5, "levels": 1, "winsize": 7, "iterations": 2, "poly_n": 5, "poly_sigma": 1.2, "flags": 0},
             {"pyr_scale": 0.5, "levels": 3, "winsize": 3, "iterations": 2, "poly_n": 5, "poly_sigma": 1.2, "flags": 0}
         ]
         flow_imgs = []
@@ -122,9 +152,7 @@ def create_batch(examples, examples_autogen, augseq):
         imgs_prev_y_aug = [augseq_det.augment_image(img) for img in imgs_prev_y]
         imgs_prev_y_aug = np.array(imgs_prev_y_aug, dtype=np.uint8).transpose((1, 2, 0))
 
-        #img_aug = np.dstack([img_curr_aug, imgs_prev_y_aug])
         img_aug = img_curr_aug
-        #img_ae_aug = np.copy(img_aug)
         img_ae_aug = np.dstack([img_curr_aug, downscale(imgs_prev_y_aug, ae_h, ae_w)])
 
         img_ae_aug_rs = downscale(img_ae_aug, ae_h, ae_w)
@@ -192,6 +220,7 @@ def create_batch(examples, examples_autogen, augseq):
     return (images, images_prev), (outputs_ae, outputs_grids, outputs_atts, outputs_multiactions, outputs_flow, outputs_canny, outputs_flips), (grids_annotated, atts_annotated)
 
 def downscale(im, h, w):
+    """Downscale one or more images to size (h, w)."""
     if isinstance(im, list):
         return [downscale(i, h, w) for i in im]
     else:
@@ -203,12 +232,14 @@ def downscale(im, h, w):
             return ia.imresize_single_image(im, (h, w), interpolation="cubic")
 
 def gray(im):
+    """Convert one or more images to grayscale."""
     if isinstance(im, list):
         return [gray(i) for i in im]
     else:
         return cv2.cvtColor(im, cv2.COLOR_RGB2GRAY)
 
 def to_rgb(im):
+    """Convert an image from (h, w) to (h, w, 3)."""
     if im.ndim == 3:
         if im.shape[2] == 3:
             return im
@@ -218,6 +249,8 @@ def to_rgb(im):
         return np.tile(im[:, :, np.newaxis], (1, 1, 3))
 
 class BatchLoader(object):
+    """Class to generate batches in multiple background processes."""
+
     def __init__(self, dataset, dataset_autogen, queue_size, augseq, nb_workers, threaded=False):
         self.queue = multiprocessing.Queue(queue_size)
         self.workers = []
