@@ -153,7 +153,7 @@ def main():
             }, "steering_wheel.tar")
 
 def run_batch(batch_idx, val, batch_loader, tracker_cnn, criterion, optimizer, history, save_debug_image):
-    """Train or validate on a single batch.""""
+    """Train or validate on a single batch."""
     train = not val
     time_cbatch_start = time.time()
     inputs, outputs_gt = batch_loader.get_batch()
