@@ -39,21 +39,46 @@ try:
 except NameError:
     xrange = range
 
+# whether to load less data
 DEBUG = False
+
+# model input height/width of the screenshot that shows the current state
 MODEL_HEIGHT = 90
 MODEL_WIDTH = 160
+
+# model input height/width of screenshots that show previous states
 MODEL_PREV_HEIGHT = 45
 MODEL_PREV_WIDTH = 80
+
+# number of batches to train for
 NB_BATCHES = 50000
+
+# batch size during train/val
 BATCH_SIZE = 32
-GPU = 0
+
+# gpu to use
+GPU = Config.GPU
+
+# save/validate/plot every N batches
 SAVE_EVERY = 100
 VAL_EVERY = 250
-NB_VAL_BATCHES = 16
 PLOT_EVERY = 100
+
+# number of batches to run during each validation (loss will be averaged)
+NB_VAL_BATCHES = 16
+
+# number of examples to split of from the hand-annotated examples
 NB_VAL_SPLIT = 128
+
+# number of examples to split of from the automatically generated examples
 NB_AUTOGEN_VAL = 512
+
+# number of automatically generated examples to use during training
+# these will be regularly re-generated (filled with new examples)
 NB_AUTOGEN_TRAIN = 20000 if not DEBUG else 256
+
+# weightings of losses for autoencoder, hand-annotated grids, hand-annotated
+# attributes, actions, optical flow, canny edges, temporal flips
 LOSS_AE_WEIGHTING = 0.2
 LOSS_GRIDS_WEIGHTING = 0.3
 LOSS_ATTRIBUTES_WEIGHTING = 0.1
@@ -61,8 +86,14 @@ LOSS_MULTIACTIONS_WEIGHTING = 0.1
 LOSS_FLOW_WEIGHTING = 0.1
 LOSS_CANNY_WEIGHTING = 0.1
 LOSS_FLIPPED_WEIGHTING = 0.1
+
+# probability to flip previous states inputs during training
 P_FLIP = 0.2
+
+# sigmas to use for canny edge images
 CANNY_SIGMAS = [1.0]
+
+# filepaths to grid annotation files
 ANNOTATIONS_GRIDS_FPS = [
     ("street_boundary_grid", os.path.join(Config.ANNOTATIONS_DIR, "annotations.pickle")),
     ("cars_grid", os.path.join(Config.ANNOTATIONS_DIR, "annotations_cars.pickle")),
@@ -74,26 +105,45 @@ ANNOTATIONS_GRIDS_FPS = [
     ("street_markings_grid", os.path.join(Config.ANNOTATIONS_DIR, "annotations_street_markings.pickle"))
 ]
 
+# filepath to attribute annotation files
 ANNOTATIONS_ATTS_FPS = [
     ("attributes", os.path.join(Config.ANNOTATIONS_DIR, "annotations_attributes.pickle"))
 ]
 
+# filepath to the compressed annotations (contains grids + attributes)
 ANNOTATIONS_COMPRESSED_FP = os.path.join(Config.ANNOTATIONS_DIR, "semisupervised_annotations.pickle.gz")
+
+# whether to use the compressed annotations instead of loading them from the
+# filepaths
 USE_COMPRESSED_ANNOTATIONS = True
 
+# order of the hand-annotated grids (was this only for visualization?)
 GRIDS_ORDER = [key for (key, fp) in ANNOTATIONS_GRIDS_FPS]
+
+# order of the hand-annotated attributes (was this only for visualization?)
 ATTRIBUTES_ORDER = []
 for att_group in ATTRIBUTE_GROUPS:
     ATTRIBUTES_ORDER.append(att_group.name)
 
+# dictionary mapping from attribute group names (e.g. "lane count" to attributes)
 ATTRIBUTE_GROUPS_BY_NAME = dict([(att_group.name, att_group) for att_group in ATTRIBUTE_GROUPS])
+
+# total number of attributes
 NB_ATTRIBUTE_VALUES = sum([len(att_group.attributes) for att_group in ATTRIBUTE_GROUPS])
 
+# downscaling factors (relative to input image size) for hand-annotated grids,
+# autoencoder esults, optical flow, canny edge images
+# changing this may also mean that you have to change the model outputs in
+# model.py
 GRIDS_DOWNSCALE_FACTOR = 1
 AE_DOWNSCALE_FACTOR = 1
 FLOW_DOWNSCALE_FACTOR = 1
 CANNY_DOWNSCALE_FACTOR = 1
 
+# distances (in states) for the previous state inputs
+# e.g. [1, 2] means that each example (during train/test) will contain the
+# current state (always added), the state 100ms ago and the state 200ms ago
+# (more precisely: the screenshots of these states)
 PREVIOUS_STATES_DISTANCES = [1, 2]
 
 def main():
@@ -165,22 +215,16 @@ def main():
     rarely = lambda aug: iaa.Sometimes(0.1, aug)
     sometimes = lambda aug: iaa.Sometimes(0.2, aug)
     often = lambda aug: iaa.Sometimes(0.3, aug)
+    # no hflips here, because that would mess up the optimal steering direction
+    # no grayscale here, because that doesn't play well with the grayscale
+    # previous images
+    # no coarse dropout, because then the model would have to magically guess
+    # things like edges or flow
     augseq = iaa.Sequential([
-            #iaa.Fliplr(0.5),
             often(iaa.Crop(percent=(0, 0.05))),
             sometimes(iaa.GaussianBlur((0, 0.2))), # blur images with a sigma between 0 and 3.0
             often(iaa.AdditiveGaussianNoise(loc=0, scale=(0.0, 0.01*255), per_channel=0.5)), # add gaussian noise to images
             often(iaa.Dropout((0.0, 0.05), per_channel=0.5)),
-            #often(iaa.Sometimes(0.5,
-            #    iaa.Dropout((0.0, 0.05), per_channel=0.5),
-            #    iaa.Dropout(
-            #        iap.FromLowerResolution(
-            #            other_param=iap.Binomial(1 - 0.2),
-            #            size_px=(2, 16)
-            #        ),
-            #        per_channel=0.2
-            #    )
-            #)),
             rarely(iaa.Sharpen(alpha=(0, 0.7), lightness=(0.75, 1.5))), # sharpen images
             rarely(iaa.Emboss(alpha=(0, 0.7), strength=(0, 2.0))), # emboss images
             rarely(iaa.Sometimes(0.5,
@@ -190,7 +234,6 @@ def main():
             often(iaa.Add((-20, 20), per_channel=0.5)), # change brightness of images (by -10 to 10 of original value)
             often(iaa.Multiply((0.8, 1.2), per_channel=0.25)), # change brightness of images (50-150% of original value)
             often(iaa.ContrastNormalization((0.8, 1.2), per_channel=0.5)), # improve or worsen the contrast
-            #sometimes(iaa.Grayscale(alpha=(0.0, 1.0))),
             sometimes(iaa.Affine(
                 scale={"x": (0.9, 1.1), "y": (0.9, 1.1)},
                 translate_percent={"x": (-0.07, 0.07), "y": (-0.07, 0.07)},
