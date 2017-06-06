@@ -133,7 +133,7 @@ PICK_NEW_PLAN_EVERY_N_STEPS = 10
 
 # number of reward bins for the direct reward prediction,
 # the sizes of these bins and their average values
-NB_REWARD_BINS = 101
+NB_REWARD_BINS = 101 # Note: this constant is also in batching.py
 BIN_SIZE = (Config.MAX_REWARD - Config.MIN_REWARD) / NB_REWARD_BINS
 BIN_AVERAGES = np.array([Config.MIN_REWARD + (i*BIN_SIZE + (i+1)*BIN_SIZE)/2 for i in xrange(NB_REWARD_BINS)], dtype=np.float32)[::-1]
 

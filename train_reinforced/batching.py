@@ -7,7 +7,6 @@ import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-import train
 import models as models_reinforced
 
 import cv2
@@ -32,7 +31,7 @@ except NameError:
     xrange = range
 
 GPU = Config.GPU
-NB_REWARD_BINS = train.NB_REWARD_BINS
+NB_REWARD_BINS = 101
 
 class BatchData(object):
     """Method encapsulating the data of a single batch.
