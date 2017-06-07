@@ -1,7 +1,9 @@
 # About
 
 This repository contains code to train and run a self-driving truck in Euro Truck Simulator 2.
-The resulting AI will automatically steer, accelerate and brake (i.e. use buttons W, A, S, D).
+The resulting AI will automatically steer, accelerate and brake.
+It is trained (mostly) via reinforcement learning and only has access to the buttons W, A, S and D
+(i.e. it can not directly set the steering wheel angle).
 
 Example video:
 
