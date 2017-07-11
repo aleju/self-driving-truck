@@ -130,9 +130,9 @@ Python libraries
 * `git clone https://github.com/aleju/self-driving-truck.git`
 * `cd self-driving-truck && cd lib && gcc -shared -O3 -Wall -fPIC -lX11 -Wl,-soname,screenshot -o screenshot.so screenshot.c -lX11`
 * Download the models:
-  * [https://drive.google.com/open?id=0B2MhAqRpz7P9MXYycU1ONFVaWHM](train_reinforced_model.tar.gz)
-  * [https://drive.google.com/open?id=0B2MhAqRpz7P9VWNVdmhabzlRc28](train_semisupervised_model.tar.gz) (optional, only needed if restarting the reinforcement learning)
-  * [https://drive.google.com/open?id=0B2MhAqRpz7P9TEtZOFAwMkVXY1k](train_semisupervised_model_withshortcuts.tar.gz) (very optional, was only only used to create the video)
+  * [train_reinforced_model.tar.gz](https://drive.google.com/open?id=0B2MhAqRpz7P9MXYycU1ONFVaWHM)
+  * [train_semisupervised_model.tar.gz](https://drive.google.com/open?id=0B2MhAqRpz7P9VWNVdmhabzlRc28) (optional, only needed if restarting the reinforcement learning)
+  * [train_semisupervised_model_withshortcuts.tar.gz](https://drive.google.com/open?id=0B2MhAqRpz7P9TEtZOFAwMkVXY1k) (very optional, was only only used to create the video)
 * Decompress the downloaded models to `.tar` files.
 * Copy `train_reinforced_model.tar` to `train_reinforced/train_reinforced_model.tar`.
 * Copy `train_semisupervised_model.tar` to `train_semisupervised/train_semisupervised_model.tar`.
